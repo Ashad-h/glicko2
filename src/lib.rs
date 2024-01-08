@@ -7,10 +7,13 @@
 //! to [`new_rating`](fn.new_rating.html) to calculate the new rating for that team or player, which can be saved in place of the old one.
 //! This process is then repeated each rating period.
 
+extern crate serde;
+use serde::{Deserialize, Serialize};
+
 const CONVERGENCE_TOLERANCE: f64 = 0.000001;
 
 /// Represents the rating of a player or team on the Glicko2 scale.
-#[derive(Clone, Copy, Debug)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug)]
 pub struct Glicko2Rating {
     /// The estimated skill of the team or player.
     pub value: f64,
@@ -24,7 +27,7 @@ pub struct Glicko2Rating {
 ///
 /// Glicko2 rating numbers tend to be less friendly for humans,
 /// so it's common to convert ratings to the Glicko scale before display.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct GlickoRating {
     /// The estimated skill of the team or player.
     pub value: f64,
@@ -37,7 +40,7 @@ pub struct GlickoRating {
 /// Note well that only the opponent is stored in a `GameResult`.
 /// The player that actually won, lost or drew respectively is not stored
 /// in the game result, but instead is passed in to [`new_rating`](fn.new_rating.html).
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct GameResult {
     // GLICKO2
     opponent_rating_value: f64,
@@ -163,7 +166,8 @@ fn f(x: f64, delta: f64, rating_deviation: f64, v: f64, volatility: f64, sys_con
     let fraction_one = {
         let numer =
             x.exp() * ((delta * delta) - (rating_deviation * rating_deviation) - v - x.exp());
-        let denom = 2.0 * (rating_deviation * rating_deviation + v + x.exp())
+        let denom = 2.0
+            * (rating_deviation * rating_deviation + v + x.exp())
             * (rating_deviation * rating_deviation + v + x.exp());
         numer / denom
     };
@@ -204,32 +208,31 @@ pub fn new_rating(
             results
                 .iter()
                 .fold(0.0, |acc, result| {
-                    acc
-                        + g(result.opponent_rating_deviation) * g(result.opponent_rating_deviation)
-                            * e(
-                                prior_rating.value,
-                                result.opponent_rating_value,
-                                result.opponent_rating_deviation,
-                            )
-                            * (1.0
-                                - e(
-                                    prior_rating.value,
-                                    result.opponent_rating_value,
-                                    result.opponent_rating_deviation,
-                                ))
-                })
-                .recip()
-        };
-        let delta = {
-            v * results.iter().fold(0.0, |acc, result| {
-                acc
-                    + g(result.opponent_rating_deviation)
-                        * (result.score
+                    acc + g(result.opponent_rating_deviation)
+                        * g(result.opponent_rating_deviation)
+                        * e(
+                            prior_rating.value,
+                            result.opponent_rating_value,
+                            result.opponent_rating_deviation,
+                        )
+                        * (1.0
                             - e(
                                 prior_rating.value,
                                 result.opponent_rating_value,
                                 result.opponent_rating_deviation,
                             ))
+                })
+                .recip()
+        };
+        let delta = {
+            v * results.iter().fold(0.0, |acc, result| {
+                acc + g(result.opponent_rating_deviation)
+                    * (result.score
+                        - e(
+                            prior_rating.value,
+                            result.opponent_rating_value,
+                            result.opponent_rating_deviation,
+                        ))
             })
         };
         let new_volatility = {
@@ -303,16 +306,17 @@ pub fn new_rating(
             (subexpr_1 + subexpr_2).sqrt().recip()
         };
         let new_rating = {
-            prior_rating.value + ((new_rd * new_rd) * results.iter().fold(0.0, |acc, &result| {
-                acc
-                    + g(result.opponent_rating_deviation)
-                        * (result.score
-                            - e(
-                                prior_rating.value,
-                                result.opponent_rating_value,
-                                result.opponent_rating_deviation,
-                            ))
-            }))
+            prior_rating.value
+                + ((new_rd * new_rd)
+                    * results.iter().fold(0.0, |acc, &result| {
+                        acc + g(result.opponent_rating_deviation)
+                            * (result.score
+                                - e(
+                                    prior_rating.value,
+                                    result.opponent_rating_value,
+                                    result.opponent_rating_deviation,
+                                ))
+                    }))
         };
         Glicko2Rating {
             value: new_rating,
@@ -358,9 +362,15 @@ mod tests {
         }));
 
         let new_rating = new_rating(example_player_rating, &results, 0.5);
-        assert!(Relative::default().epsilon(0.0001).eq(&new_rating.value, &-0.2069));
-        assert!(Relative::default().epsilon(0.0001).eq(&new_rating.deviation, &0.8722));
-        assert!(Relative::default().epsilon(0.0001).eq(&new_rating.volatility, &0.05999))
+        assert!(Relative::default()
+            .epsilon(0.0001)
+            .eq(&new_rating.value, &-0.2069));
+        assert!(Relative::default()
+            .epsilon(0.0001)
+            .eq(&new_rating.deviation, &0.8722));
+        assert!(Relative::default()
+            .epsilon(0.0001)
+            .eq(&new_rating.volatility, &0.05999))
     }
 
     #[test]
@@ -371,12 +381,22 @@ mod tests {
         };
 
         let glicko2_rating = Glicko2Rating::from(example_player);
-        assert!(Relative::default().epsilon(0.0001).eq(&glicko2_rating.value, &0.0));
-        assert!(Relative::default().epsilon(0.0001).eq(&glicko2_rating.deviation, &1.1513));
-        assert!(Relative::default().epsilon(0.0001).eq(&glicko2_rating.volatility, &0.06));
+        assert!(Relative::default()
+            .epsilon(0.0001)
+            .eq(&glicko2_rating.value, &0.0));
+        assert!(Relative::default()
+            .epsilon(0.0001)
+            .eq(&glicko2_rating.deviation, &1.1513));
+        assert!(Relative::default()
+            .epsilon(0.0001)
+            .eq(&glicko2_rating.volatility, &0.06));
 
         let glicko_rating = GlickoRating::from(glicko2_rating);
-        assert!(Relative::default().epsilon(0.0001).eq(&glicko_rating.value, &1500.0));
-        assert!(Relative::default().epsilon(0.0001).eq(&glicko_rating.deviation, &200.0));
+        assert!(Relative::default()
+            .epsilon(0.0001)
+            .eq(&glicko_rating.value, &1500.0));
+        assert!(Relative::default()
+            .epsilon(0.0001)
+            .eq(&glicko_rating.deviation, &200.0));
     }
 }

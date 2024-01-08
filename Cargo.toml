@@ -8,6 +8,9 @@ description = "Implementation of the glicko2 rating system"
 categories = ["algorithms"]
 keywords = ["glicko", "elo", "rating", "skill"]
 
+[dependencies]
+serde = { version = "1.0.195", features = ["derive"] }
+
+
 [dev-dependencies]
 approx = "0.5"
-
